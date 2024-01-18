@@ -4,6 +4,7 @@
 ```
 - 定義常數 M_1_PI，其值為 pi 的倒數。
 ---
+### updateReservoir()
 ```cpp
 float4 updateReservoir(float4 reservoir, int lightToSample, float weight, uint randSeed) {
 ```
@@ -36,6 +37,7 @@ float4 updateReservoir(float4 reservoir, int lightToSample, float weight, uint r
 ```
 - 總的來說，這個函數的目的是根據新計算得到的概率密度函數比例（weight / reservoir.x），更新儲備的權重和候選數目，同時根據一定的概率選擇當前的光源索引。這個更新的過程是 ReSTIR 算法中重要的一部分，用於有效地選擇和追蹤光源。
 ---
+### getLightData()
 ```cpp
 // A helper to extract important light data from internal Falcor data structures.  What's going on isn't particularly
 //     important -- any framework you use will expose internal scene data in some way.  Use your framework's utilities.
@@ -76,6 +78,7 @@ void getLightData(in int index, in float3 hitPos, out float3 toLight, out float3
 ```
 - 函數的主要邏輯是檢查指定索引的光源類型，如果是方向光（LightDirectional），則使用 evalDirectionalLight 函數評估該方向光在擊中點的效果；否則，假定為點光源（evalPointLight 函數）。最後，從 LightSample 結構中提取的數據被轉換成更簡單的形式，以供後續使用。
 ---
+### getPerpendicularVector()
 ```cpp
 // Utility function to get a vector perpendicular to an input vector
 //    (from "Efficient Construction of Perpendicular Vectors Without Branching")
@@ -108,6 +111,7 @@ float3 getPerpendicularVector(float3 u)
 }
 ```
 ---
+### initRand()
 ```cpp
 // Generates a seed for a random number generator from 2 inputs plus a backoff
 uint initRand(uint val0, uint val1, uint backoff = 16)
@@ -148,6 +152,7 @@ uint initRand(uint val0, uint val1, uint backoff = 16)
 }
 ```
 ---
+### nextRand()
 ```cpp
 // Takes our seed, updates it, and returns a pseudorandom float in [0..1]
 float nextRand(inout uint s)
@@ -168,6 +173,7 @@ float nextRand(inout uint s)
 ```
 - 總的來說，nextRand 函數返回一個在區間 [0, 1) 內的偽隨機浮點數，同時更新內部狀態 s 以供下一次調用使用。請注意，這是一個簡單的偽隨機數生成器，不適用於加密或需要高質量隨機數的應用。
 ---
+### getCosHemisphereSample()
 ```cpp
 // Get a cosine-weighted random vector centered around a specified normal direction.
 float3 getCosHemisphereSample(inout uint randSeed, float3 hitNorm)
@@ -208,6 +214,7 @@ float3 getCosHemisphereSample(inout uint randSeed, float3 hitNorm)
 ```
 - 總的來說，這個函數用於生成在半球上進行餘弦加權（Cosine Weighted）的樣本點，通常用於計算漫反射光線的方向。
 ---
+### alphaTestFails()
 ```cpp
 // This function tests if the alpha test fails, given the attributes of the current hit.
 //   -> Can legally be called in a DXR any-hit shader or a DXR closest-hit shader, and
@@ -244,6 +251,7 @@ bool alphaTestFails(BuiltInTriangleIntersectionAttributes attribs)
 ```
 - 總的來說，這段代碼用於確定擊中點是否通過 alpha 測試。
 ---
+### getHitShadingData()
 ```cpp
 //-------- For GI -------------
 
@@ -267,6 +275,7 @@ ShadingData getHitShadingData(BuiltInTriangleIntersectionAttributes attribs)
 }
 ```
 ---
+### atan2_WAR()
 ```cpp
 // A work-around function because some DXR drivers seem to have broken atan2() implementations
 float atan2_WAR(float y, float x)
@@ -290,6 +299,7 @@ float atan2_WAR(float y, float x)
 - 這段代碼考慮了 x 和 y 的不同符號情況，以確保計算結果的正確性。在一些情況下，原生的 atan2 函數可能會產生不正確的結果，這可能是由於對特定情境的處理不足引起的。因此，這段代碼通過不同的情況來避免可能的問題，確保返回正確的角度值。
 - 總的來說，這是為了處理某些 atan2 可能出現的邊界情況而進行的調整。
 ---
+### wsVectorToLatLong()
 ```cpp
 // Convert our world space direction to a (u,v) coord in a latitude-longitude spherical map
 float2 wsVectorToLatLong(float3 dir)
@@ -316,6 +326,7 @@ float2 wsVectorToLatLong(float3 dir)
 }
 ```
 ---
+### getUniformHemisphereSample()
 ```cpp
 // Get a uniform weighted random vector centered around a specified normal direction.
 float3 getUniformHemisphereSample(inout uint randSeed, float3 hitNorm)

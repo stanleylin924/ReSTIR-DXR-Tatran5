@@ -1,3 +1,7 @@
+### Contents
+[TOC]
+
+---
 ```cpp
 // Some shared Falcor stuff for talking between CPU and GPU code
 #include "HostDeviceSharedMacros.h"
@@ -54,6 +58,7 @@ RWTexture2D<float4> gIndirectOutput; //For output from indirect illumination
 Texture2D<float4> gEnvMap;
 ```
 ---
+### IndirectMiss()
 ```cpp
 // What code is executed when our ray misses all geometry?
 [shader("miss")]
@@ -71,6 +76,7 @@ void IndirectMiss(inout IndirectRayPayload rayData)
 }
 ```
 ---
+### IndirectAnyHit()
 ```cpp
 // What code is executed when our ray hits a potentially transparent surface?
 [shader("anyhit")]
@@ -82,6 +88,7 @@ void IndirectAnyHit(inout IndirectRayPayload rayData, BuiltInTriangleIntersectio
 }
 ```
 ---
+### IndirectClosestHit()
 ```cpp
 // What code is executed when we have a new closest hitpoint?   Well, pick a random light,
 //    shoot a shadow ray to that light, and shade using diffuse shading.
@@ -111,6 +118,7 @@ void IndirectClosestHit(inout IndirectRayPayload rayData, BuiltInTriangleInterse
 }
 ```
 ---
+### shootIndirectRay()
 ```cpp
 // A utility function to trace an idirect ray and return the color it sees.
 //    -> Note:  This assumes the indirect hit programs and miss programs are index 1!
@@ -136,6 +144,7 @@ float3 shootIndirectRay(float3 rayOrigin, float3 rayDir, float minT, uint seed)
 }
 ```
 ---
+### LambertShadowsRayGen()
 ```cpp
 // How do we shade our g-buffer and generate shadow rays?
 [shader("raygeneration")]
@@ -248,6 +257,9 @@ void LambertShadowsRayGen()
   - dot(worldNorm.xyz, toLight) 計算了法線向量和光線方向向量的內積，結果是兩個向量之間夾角的餘弦值。在這個上下文中，這個值通常被稱為 Lambertian 反射的 Lambert term。
   - 然而，內積的結果範圍是負無窮到正無窮，而 Lambert term 的合法範圍是 [0, 1]。為了確保值在這個合法範圍內，使用 saturate 函數。它將所有小於 0 的值置為 0，所有大於 1 的值置為 1，因此確保 Lambert term 被夾在合理的範圍內。
 - 總的來說，LdotN 用來衡量光線的入射角度對漫反射光線的影響，這是 Lambertian 反射模型的一個基本元素。
+- saturate 是一個常見的數學函數，它將輸入夾緊在 0 到 1 之間。在 HLSL（High-Level Shading Language）中，這是一個內建的數學函數，用來確保值不會越界。
+  在其他環境中，你可能會看到類似功能的函數，比如在 GLSL（OpenGL Shading Language）中，saturate 的等效函數是 clamp(x, 0.0, 1.0)。
+  這個函數的目的是防止值超出合理的範圍。在這個上下文中，dot(worldNorm.xyz, toLight) 的結果是兩個向量的內積，可能在 -∞ 到 +∞ 的範圍內。saturate 的作用是將這個值夾縮在 0 到 1 之間，因為這是 Lambertian 反射的合法範圍。
 ```cpp
             // p_hat of the light is f * Le * G / pdf
             p_hat = length(difMatlColor.xyz / M_PI * lightIntensity * LdotN / (distToLight * distToLight)); // technically p_hat is divided by pdf, but point light pdf is 1
@@ -297,44 +309,68 @@ void LambertShadowsRayGen()
             reservoir.w = 0.f;
         }
 ```
-- 如果通過 shadowRayVisibility 函數判斷光源和撞擊點之間的陰影可見性低於一個閾值，則將 reservoir.w 設置為0，表示該光源將被視為不可見。
+- 如果通過 shadowRayVisibility 函數返回光源和擊中點之間的可見性低於一個閾值（為了避免浮點數儲存時的誤差），則將 reservoir.w 設置為 0，表示該光源將被視為不可見。
+- shadowRayVisibility 函數對應到論文中 Algorithm 5 的 shadowed 函數。回傳值為 1.0f 表示可見（未被遮擋），0.0f 表示不可見（被遮擋）。
 ```cpp
         // ----------------------------------------------------------------------------------------------
         // ----------------------------------- Temporal reuse BEGIN -------------------------------------
         // ----------------------------------------------------------------------------------------------
         if (gTemporalReuse) {
+```
+- 如果啟用了 gTemporalReuse，則執行時間重用的相關計算。這包括結合當前 reservoir 和前一幀的 reservoir，以及更新 M 和 W 的值。
+- 這段代碼是為了實現光線追蹤中的時間重用（Temporal Reuse）功能。Temporal Reuse 是一種技術，旨在利用先前幀的光線信息，以提高當前幀的渲染效果。
+```cpp
             float4 temporal_reservoir = float4(0.f);
-
+```
+- temporal_reservoir 初始化為 float4(0.f)，用於存儲結合當前幀和先前幀光線信息的臨時數據。
+```cpp
             // combine current reservoir
             temporal_reservoir = updateReservoir(temporal_reservoir, reservoir.y, p_hat * reservoir.w * reservoir.z, randSeed);
-
+```
+- 結合當前幀的光線信息：
+  - 使用 updateReservoir 函數結合 reservoir 中的光源信息，權重，以及之前的累積次數。
+```cpp
             // combine previous reservoir
             getLightData(prev_reservoir.y, worldPos.xyz, toLight, lightIntensity, distToLight);
             LdotN = saturate(dot(worldNorm.xyz, toLight));
             p_hat = length(difMatlColor.xyz / M_PI * lightIntensity * LdotN / (distToLight * distToLight));
             prev_reservoir.z = min(20.f * reservoir.z, prev_reservoir.z);
             temporal_reservoir = updateReservoir(temporal_reservoir, prev_reservoir.y, p_hat * prev_reservoir.w * prev_reservoir.z, randSeed);
-
+```
+- 結合先前幀的光線信息：
+  - 使用 getLightData 函數獲取先前幀中光源的信息。
+  - 使用 updateReservoir 函數結合先前幀的光線信息，權重，以及之前的累積次數。
+  - 限制先前幀 prev_reservoir.z 的值，使其不超過 20.f * reservoir.z 的範圍，以防止過大，以確保穩定性或防止過度的數值增長。
+```cpp
             // set M value
             temporal_reservoir.z = reservoir.z + prev_reservoir.z;
-
+```
+- 設置 temporal_reservoir 的 M 值：將當前幀和先前幀的 M 值相加，得到新的 M 值。
+```cpp
             // set W value
             getLightData(temporal_reservoir.y, worldPos.xyz, toLight, lightIntensity, distToLight);
             LdotN = saturate(dot(worldNorm.xyz, toLight));
             p_hat = length(difMatlColor.xyz / M_PI * lightIntensity * LdotN / (distToLight * distToLight));
             temporal_reservoir.w = (1.f / max(p_hat, 0.0001f)) * (temporal_reservoir.x / max(temporal_reservoir.z, 0.0001f));
-
+```
+- 設置 temporal_reservoir 的 W 值：
+  - 使用當前幀中的光源信息重新計算 p_hat。
+  - 計算新的權重 W。
+```cpp
             // set current reservoir to the combined temporal reservoir
             reservoir = temporal_reservoir;
+```
+- 將 temporal_reservoir 賦值給 reservoir，以更新當前 reservoir 的光線信息。
+```cpp
         }
 ```
-- 如果啟用了 gTemporalReuse，則執行時間重用的相關計算。這包括結合當前儲備和前一幀的儲備，以及更新 M 和 W 的值。
-
+- 簡而言之，這段代碼實現了在 Temporal Reuse 中更新光線的 reservoir 的過程。
 ```cpp
-
         // ----------------------------------------------------------------------------------------------
         // ----------------------------------- Temporal reuse END ---------------------------------------
         // ----------------------------------------------------------------------------------------------
+```
+```cpp
 
         // ----------------------------------------------------------------------------------------------
         //----------------------------------- Global Illumination BEGIN----------------------------------
@@ -366,15 +402,14 @@ void LambertShadowsRayGen()
             // Probability of selecting this ray ( cos/pi for cosine sampling, 1/2pi for uniform sampling )
             sampleProb = gCosSampling ? (ID_NdotL / M_PI) : (1.0f / (2.0f * M_PI));
         }
-```
-- 如果啟用了全局光照 gDoIndirectGI，則選擇一個隨機方向生成漫反射射線，計算 NdotL 和發射間接全局光線，並計算選擇該射線的概率。
-
-```cpp
 
         // ----------------------------------------------------------------------------------------------
         // ---------------------------------- Global Illumination END------------------------------------
         // ----------------------------------------------------------------------------------------------
+```
+- 如果啟用了全局光照 gDoIndirectGI，則選擇一個隨機方向生成漫反射射線，計算 NdotL 和發射間接全局光線，並計算選擇該射線的概率。
 
+```cpp
         // Save the computed reserrvoir back into the buffer
         gReservoirCurr[launchIndex] = reservoir;
         gIndirectOutput[launchIndex] = float4(0.f); //Intialize to 0
